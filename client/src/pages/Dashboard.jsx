@@ -296,6 +296,7 @@ function Dashboard() {
       <PaymentConfirmModal
         open={upi.showConfirm}
         onConfirm={upi.confirmPayment}
+        onClose={() => upi.dismissConfirm()}
         confirming={upi.confirming}
       />
 

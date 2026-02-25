@@ -88,9 +88,17 @@ export default function useUpiPayment(API_URL, token, onSuccess) {
     };
   }, []); // Empty deps: safe because we read refs, not state
 
+  // 4️⃣ Dismiss modal without confirming (X button)
+  const dismissConfirm = () => {
+    if (confirmingRef.current) return; // Don't dismiss while a request is in flight
+    updatePendingExpense(null);
+    setShowConfirm(false);
+  };
+
   return {
     initiatePayment,
     confirmPayment,
+    dismissConfirm,
     showConfirm,
     confirming,
     pendingExpense,

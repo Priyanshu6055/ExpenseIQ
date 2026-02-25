@@ -1,11 +1,19 @@
-import { ShieldCheck, XCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { ShieldCheck, XCircle, CheckCircle2, Loader2, X } from "lucide-react";
 
-export default function PaymentConfirmModal({ open, onConfirm, confirming }) {
+export default function PaymentConfirmModal({ open, onConfirm, onClose, confirming }) {
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-      <div className="bg-card p-6 rounded-2xl text-center w-full max-w-sm border border-border/50 shadow-2xl animate-scale-in">
+      <div className="bg-card p-6 rounded-2xl text-center w-full max-w-sm border border-border/50 shadow-2xl animate-scale-in relative">
+        <button
+          onClick={onClose}
+          disabled={confirming}
+          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground hover:bg-muted p-1.5 rounded-full transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <X size={18} />
+        </button>
+
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 ring-4 ring-background shadow-lg">
           {confirming ? (
             <Loader2 size={32} className="text-primary animate-spin" />
