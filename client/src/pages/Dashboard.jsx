@@ -287,15 +287,16 @@ function Dashboard() {
         open={isPayModalOpen}
         categories={categories}
         onClose={() => setIsPayModalOpen(false)}
-        onPay={(payload) => {
+        onPay={async (payload) => {
+          await upi.initiatePayment(payload);
           setIsPayModalOpen(false);
-          upi.initiatePayment(payload);
         }}
       />
 
       <PaymentConfirmModal
         open={upi.showConfirm}
         onConfirm={upi.confirmPayment}
+        confirming={upi.confirming}
       />
 
       <EditTransactionModal

@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { X, Smartphone, ScanLine, IndianRupee } from "lucide-react";
 import QrScanModal from "./QrScanModal";
-import { extractUpiFromQr } from "./upi.utils";
 
 export default function UpiPayModal({ open, onClose, categories, onPay }) {
   const [upiId, setUpiId] = useState("");
-  const [payeeName, setPayeeName] = useState(""); // ✅ dynamic pn
+  const [payeeName, setPayeeName] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
@@ -15,70 +14,22 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
 
   if (!open) return null;
 
-  // old code
-  // const handlePay = async () => {
-  //   if (paying) return;
-
-  //   if (!upiId || !amount || !category) {
-  //     setError("UPI ID, amount and category are required");
-  //     return;
-  //   }
-
-  //   if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
-  //     setError("Invalid UPI ID format");
-  //     return;
-  //   }
-
-  //   const amt = Number(amount);
-  //   if (isNaN(amt) || amt <= 0) {
-  //     setError("Invalid amount");
-  //     return;
-  //   }
-
-  //   const finalAmount = amt.toFixed(2);
-
-  //   // ✅ SAFE fallback if pn missing
-  //   const finalPayeeName =
-  //     payeeName ||
-  //     upiId.split("@")[0].replace(/[^a-zA-Z ]/g, "") ||
-  //     "UPI Payment";
-
-  //   const txnNote = `Expense_${Date.now()}`;
-
-  //   setError("");
-  //   setPaying(true);
-
-  //   // 1️⃣ Create pending expense
-  //   await onPay({
-  //     amount: finalAmount,
-  //     category,
-  //     description,
-  //   });
-
-  //   // 2️⃣ SAFE UPI URL (ANTI-FRAUD COMPLIANT)
-  //   const upiUrl =
-  //     `upi://pay` +
-  //     `?pa=${encodeURIComponent(upiId)}` +
-  //     `&pn=${encodeURIComponent(finalPayeeName)}` +
-  //     `&am=${finalAmount}` +
-  //     `&cu=INR` +
-  //     `&tn=${encodeURIComponent(txnNote)}`;
-
-  //   // 3️⃣ Redirect ONCE
-  //   window.location.href = upiUrl;
-  // };
-
-  const handlePay = () => {
+  // ✅ Correct UPI Intent Flow:
+  // 1. Validate (sync)
+  // 2. Call backend to create pending expense — AWAIT it so expenseId is set BEFORE redirect
+  // 3. Redirect to UPI app (window.location.href is safe after async; doesn't need sync gesture)
+  // 4. On return: focus/visibilitychange listener shows confirm modal
+  const handlePay = async () => {
     if (paying) return;
 
-    // 1️⃣ Synchronous Validation
+    // 1️⃣ Validate
     if (!upiId || !amount || !category) {
       setError("UPI ID, amount, and category are required.");
       return;
     }
 
     const upiRegex = /^[\w.\-]{2,}@[a-zA-Z]{2,10}$/;
-    if (!upiRegex.test(upiId)) {
+    if (!upiRegex.test(upiId.trim())) {
       setError("Please enter a valid UPI ID (e.g., name@bank).");
       return;
     }
@@ -88,37 +39,46 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
       setError("Please enter a valid amount.");
       return;
     }
+
     const finalAmount = amt.toFixed(2);
-    const finalPayeeName = payeeName.trim() || upiId.split('@')[0];
+    const finalPayeeName = payeeName.trim() || upiId.split("@")[0];
     const txnNote = `Pay_${Date.now()}`;
 
-    // 2️⃣ Reset UI State
     setError("");
     setPaying(true);
 
-    // 3️⃣ Generate Intent URL (Production-ready encoding)
-    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(finalPayeeName)}&am=${finalAmount}&cu=INR&tn=${encodeURIComponent(txnNote)}`;
+    // 2️⃣ Register pending expense on backend FIRST
+    // This ensures expenseId is set before the user returns and taps confirm
+    try {
+      await onPay({
+        amount: finalAmount,
+        category,
+        description: description.trim() || `UPI to ${upiId}`,
+      });
+    } catch (err) {
+      console.error("Failed to create pending expense:", err);
+      setError("Could not reach server. Please try again.");
+      setPaying(false);
+      return; // ❌ Never redirect if backend failed
+    }
 
-    // 4️⃣ Synchronous Redirect (Preserves user gesture context)
-    // We notify the hook about the payload so it can handle it when the user returns
-    onPay({
-      amount: finalAmount,
-      category,
-      description: description || `UPI to ${upiId}`,
-      isIntentTriggered: true // Signals useUpiPayment to defer API call
-    });
+    // 3️⃣ Build and fire UPI deep link AFTER expenseId is confirmed
+    const upiUrl =
+      `upi://pay` +
+      `?pa=${encodeURIComponent(upiId.trim())}` +
+      `&pn=${encodeURIComponent(finalPayeeName)}` +
+      `&am=${finalAmount}` +
+      `&cu=INR` +
+      `&tn=${encodeURIComponent(txnNote)}`;
 
-    // Fire the intent immediately
     window.location.href = upiUrl;
 
-    // Fallback if app doesn't open
-    setTimeout(() => {
-      setPaying(false);
-    }, 3000);
+    // Safety: reset paying state if UPI app never opens (e.g. on desktop)
+    setTimeout(() => setPaying(false), 5000);
   };
 
-
-  const inputClass = "w-full px-4 py-3 rounded-xl bg-background border border-input focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm placeholder:text-muted-foreground";
+  const inputClass =
+    "w-full px-4 py-3 rounded-xl bg-background border border-input focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm placeholder:text-muted-foreground";
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm p-4">
@@ -212,11 +172,11 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
           disabled={paying}
           onClick={handlePay}
           className={`w-full mt-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 active:scale-[0.98] shadow-lg ${paying
-            ? "bg-[#00aaff] text-muted-foreground cursor-not-allowed"
-            : "bg-[#00aaff] text-primary-foreground hover:bg-primary-hover hover:shadow-primary/25"
+              ? "bg-[#00aaff]/60 text-white cursor-not-allowed"
+              : "bg-[#00aaff] text-white hover:bg-[#0088dd] hover:shadow-blue-500/25"
             }`}
         >
-          {paying ? "Opening UPI..." : "Pay Now"}
+          {paying ? "Connecting to UPI..." : "Pay Now"}
         </button>
       </div>
     </div>
