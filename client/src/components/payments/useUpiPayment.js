@@ -6,17 +6,23 @@ export default function useUpiPayment(API_URL, token, onSuccess) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  // Use a ref so the focus listener always sees the latest value
-  // without needing to be re-registered on every render
+  // Refs allow focus/visibility listeners to read current values
+  // without stale closures — listener is only registered once
   const pendingExpenseRef = useRef(null);
+  const confirmingRef = useRef(false); // ✅ prevents stale double-click guard
 
   const updatePendingExpense = (id) => {
     pendingExpenseRef.current = id;
     setPendingExpense(id);
   };
 
-  // 1️⃣ Creates a pending expense on the backend and returns its ID
-  // This is called BEFORE the redirect, so the ID is always available on return
+  const updateConfirming = (val) => {
+    confirmingRef.current = val;
+    setConfirming(val);
+  };
+
+  // 1️⃣ Creates a pending expense and stores its ID
+  // Must be awaited by caller BEFORE redirect
   const initiatePayment = async (payload) => {
     const res = await axios.post(
       `${API_URL}/api/expenses/upi/initiate`,
@@ -25,39 +31,43 @@ export default function useUpiPayment(API_URL, token, onSuccess) {
     );
     const expenseId = res.data.data.expenseId;
     updatePendingExpense(expenseId);
-    return expenseId; // ✅ caller can also await this
+    return expenseId;
   };
 
-  // 2️⃣ Called when user taps Yes/No in the confirm modal
+  // 2️⃣ Called when user taps Yes/No
+  // Uses refs so this function never has a stale guard or stale ID
   const confirmPayment = useCallback(async (status) => {
     const id = pendingExpenseRef.current;
     if (!id) {
-      console.warn("confirmPayment called with no pending expense ID — ignoring.");
+      console.warn("confirmPayment: no pendingExpense ID — skipping.");
       return;
     }
-    if (confirming) return;
+    // ✅ Read from ref, not from closure — no stale value
+    if (confirmingRef.current) return;
 
-    setConfirming(true);
+    updateConfirming(true);
     try {
       await axios.patch(
         `${API_URL}/api/expenses/upi/confirm/${id}`,
         { status },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      // ✅ Reset state in correct order: clear ID first, then close modal
       updatePendingExpense(null);
+      updateConfirming(false);
       setShowConfirm(false);
       onSuccess?.();
     } catch (err) {
       console.error("confirmPayment API failed:", err);
-    } finally {
-      setConfirming(false);
+      updateConfirming(false); // ✅ Always re-enable buttons on error
     }
-  }, [API_URL, token, onSuccess, confirming]);
+    // ✅ excluded confirming — we use ref so deps don't need it
+  }, [API_URL, token, onSuccess]);
 
-  // 3️⃣ Detect return from UPI app using focus + visibilitychange
+  // 3️⃣ Detect return from UPI app
+  // Both events needed: focus (desktop/some Android), visibilitychange (iOS + most Android)
   useEffect(() => {
     const handleReturn = () => {
-      // Only show confirm if there is a pending expense
       if (pendingExpenseRef.current) {
         setShowConfirm(true);
       }
@@ -76,7 +86,7 @@ export default function useUpiPayment(API_URL, token, onSuccess) {
       window.removeEventListener("focus", handleReturn);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []); // ✅ Empty deps: listener reads ref directly, no stale closure
+  }, []); // Empty deps: safe because we read refs, not state
 
   return {
     initiatePayment,

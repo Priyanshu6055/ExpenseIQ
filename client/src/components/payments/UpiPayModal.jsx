@@ -41,14 +41,16 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
     }
 
     const finalAmount = amt.toFixed(2);
-    const finalPayeeName = payeeName.trim() || upiId.split("@")[0];
-    const txnNote = `Pay_${Date.now()}`;
+
+    // ✅ Strip ALL non-ASCII and non-alphanumeric chars from pn
+    // Many UPI apps (especially on iOS) reject pn with special chars
+    const rawName = payeeName.trim() || upiId.split("@")[0];
+    const finalPayeeName = rawName.replace(/[^a-zA-Z0-9 ]/g, "").trim() || "UPI Payment";
 
     setError("");
     setPaying(true);
 
-    // 2️⃣ Register pending expense on backend FIRST
-    // This ensures expenseId is set before the user returns and taps confirm
+    // 2️⃣ Register pending expense FIRST — expenseId must exist before redirect
     try {
       await onPay({
         amount: finalAmount,
@@ -59,21 +61,22 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
       console.error("Failed to create pending expense:", err);
       setError("Could not reach server. Please try again.");
       setPaying(false);
-      return; // ❌ Never redirect if backend failed
+      return;
     }
 
-    // 3️⃣ Build and fire UPI deep link AFTER expenseId is confirmed
+    // 3️⃣ Minimal, compliant UPI deep link
+    // ✅ Only use: pa (required), pn (recommended), am, cu
+    // ❌ Do NOT include: tn, tr, mc, mode — causes "Something went wrong" on iOS apps
     const upiUrl =
       `upi://pay` +
       `?pa=${encodeURIComponent(upiId.trim())}` +
       `&pn=${encodeURIComponent(finalPayeeName)}` +
       `&am=${finalAmount}` +
-      `&cu=INR` +
-      `&tn=${encodeURIComponent(txnNote)}`;
+      `&cu=INR`;
 
     window.location.href = upiUrl;
 
-    // Safety: reset paying state if UPI app never opens (e.g. on desktop)
+    // Reset state if UPI app never launches (desktop/unsupported browser)
     setTimeout(() => setPaying(false), 5000);
   };
 
@@ -172,8 +175,8 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
           disabled={paying}
           onClick={handlePay}
           className={`w-full mt-6 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 active:scale-[0.98] shadow-lg ${paying
-              ? "bg-[#00aaff]/60 text-white cursor-not-allowed"
-              : "bg-[#00aaff] text-white hover:bg-[#0088dd] hover:shadow-blue-500/25"
+            ? "bg-[#00aaff]/60 text-white cursor-not-allowed"
+            : "bg-[#00aaff] text-white hover:bg-[#0088dd] hover:shadow-blue-500/25"
             }`}
         >
           {paying ? "Connecting to UPI..." : "Pay Now"}
