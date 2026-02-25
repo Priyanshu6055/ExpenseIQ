@@ -68,64 +68,53 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
   //   window.location.href = upiUrl;
   // };
 
-
-
   const handlePay = () => {
     if (paying) return;
 
+    // 1️⃣ Synchronous Validation
     if (!upiId || !amount || !category) {
-      setError("UPI ID, amount and category are required");
+      setError("UPI ID, amount, and category are required.");
       return;
     }
 
-    if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
-      setError("Invalid UPI ID format");
+    const upiRegex = /^[\w.\-]{2,}@[a-zA-Z]{2,10}$/;
+    if (!upiRegex.test(upiId)) {
+      setError("Please enter a valid UPI ID (e.g., name@bank).");
       return;
     }
 
-    const amt = Number(amount);
+    const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
-      setError("Invalid amount");
+      setError("Please enter a valid amount.");
       return;
     }
-
     const finalAmount = amt.toFixed(2);
+    const finalPayeeName = payeeName.trim() || upiId.split('@')[0];
+    const txnNote = `Pay_${Date.now()}`;
 
-    const finalPayeeName =
-      payeeName ||
-      upiId.split("@")[0].replace(/[^a-zA-Z ]/g, "") ||
-      "UPI Payment";
-
-    const txnNote = `Expense_${Date.now()}`;
-
+    // 2️⃣ Reset UI State
     setError("");
     setPaying(true);
 
-    // 🔥 Generate UPI URL FIRST
-    const upiUrl =
-      `upi://pay` +
-      `?pa=${encodeURIComponent(upiId)}` +
-      `&pn=${encodeURIComponent(finalPayeeName)}` +
-      `&am=${finalAmount}` +
-      `&cu=INR` +
-      `&tn=${encodeURIComponent(txnNote)}`;
+    // 3️⃣ Generate Intent URL (Production-ready encoding)
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(finalPayeeName)}&am=${finalAmount}&cu=INR&tn=${encodeURIComponent(txnNote)}`;
 
-    // 🔥 Fire API in background (DO NOT await)
+    // 4️⃣ Synchronous Redirect (Preserves user gesture context)
+    // We notify the hook about the payload so it can handle it when the user returns
     onPay({
       amount: finalAmount,
       category,
-      description,
-    }).catch((err) => {
-      console.error("Pending expense creation failed:", err);
+      description: description || `UPI to ${upiId}`,
+      isIntentTriggered: true // Signals useUpiPayment to defer API call
     });
 
-    // 🔥 Use anchor click (more trusted than location.href)
-    const link = document.createElement("a");
-    link.href = upiUrl;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Fire the intent immediately
+    window.location.href = upiUrl;
+
+    // Fallback if app doesn't open
+    setTimeout(() => {
+      setPaying(false);
+    }, 3000);
   };
 
 
