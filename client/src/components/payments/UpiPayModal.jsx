@@ -15,7 +15,62 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
 
   if (!open) return null;
 
-  const handlePay = async () => {
+  // old code
+  // const handlePay = async () => {
+  //   if (paying) return;
+
+  //   if (!upiId || !amount || !category) {
+  //     setError("UPI ID, amount and category are required");
+  //     return;
+  //   }
+
+  //   if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId)) {
+  //     setError("Invalid UPI ID format");
+  //     return;
+  //   }
+
+  //   const amt = Number(amount);
+  //   if (isNaN(amt) || amt <= 0) {
+  //     setError("Invalid amount");
+  //     return;
+  //   }
+
+  //   const finalAmount = amt.toFixed(2);
+
+  //   // ✅ SAFE fallback if pn missing
+  //   const finalPayeeName =
+  //     payeeName ||
+  //     upiId.split("@")[0].replace(/[^a-zA-Z ]/g, "") ||
+  //     "UPI Payment";
+
+  //   const txnNote = `Expense_${Date.now()}`;
+
+  //   setError("");
+  //   setPaying(true);
+
+  //   // 1️⃣ Create pending expense
+  //   await onPay({
+  //     amount: finalAmount,
+  //     category,
+  //     description,
+  //   });
+
+  //   // 2️⃣ SAFE UPI URL (ANTI-FRAUD COMPLIANT)
+  //   const upiUrl =
+  //     `upi://pay` +
+  //     `?pa=${encodeURIComponent(upiId)}` +
+  //     `&pn=${encodeURIComponent(finalPayeeName)}` +
+  //     `&am=${finalAmount}` +
+  //     `&cu=INR` +
+  //     `&tn=${encodeURIComponent(txnNote)}`;
+
+  //   // 3️⃣ Redirect ONCE
+  //   window.location.href = upiUrl;
+  // };
+
+
+
+  const handlePay = () => {
     if (paying) return;
 
     if (!upiId || !amount || !category) {
@@ -36,7 +91,6 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
 
     const finalAmount = amt.toFixed(2);
 
-    // ✅ SAFE fallback if pn missing
     const finalPayeeName =
       payeeName ||
       upiId.split("@")[0].replace(/[^a-zA-Z ]/g, "") ||
@@ -47,14 +101,7 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
     setError("");
     setPaying(true);
 
-    // 1️⃣ Create pending expense
-    await onPay({
-      amount: finalAmount,
-      category,
-      description,
-    });
-
-    // 2️⃣ SAFE UPI URL (ANTI-FRAUD COMPLIANT)
+    // 🔥 Generate UPI URL FIRST
     const upiUrl =
       `upi://pay` +
       `?pa=${encodeURIComponent(upiId)}` +
@@ -63,9 +110,24 @@ export default function UpiPayModal({ open, onClose, categories, onPay }) {
       `&cu=INR` +
       `&tn=${encodeURIComponent(txnNote)}`;
 
-    // 3️⃣ Redirect ONCE
-    window.location.href = upiUrl;
+    // 🔥 Fire API in background (DO NOT await)
+    onPay({
+      amount: finalAmount,
+      category,
+      description,
+    }).catch((err) => {
+      console.error("Pending expense creation failed:", err);
+    });
+
+    // 🔥 Use anchor click (more trusted than location.href)
+    const link = document.createElement("a");
+    link.href = upiUrl;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
+
 
   const inputClass = "w-full px-4 py-3 rounded-xl bg-background border border-input focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-sm placeholder:text-muted-foreground";
 
